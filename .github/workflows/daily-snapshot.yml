@@ -36,6 +36,17 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Restore incremental sync cache
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.refresh_data != false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/daily-snapshot.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].id')"
+          artifact_url="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" --jq '.artifacts[] | select(.name == "github-pages" and .expired == false) | .archive_download_url' | head -n 1)"
+          if [ -n "${artifact_url}" ]; then
+            curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" "${artifact_url}" -o previous-pages.zip
+            unzip -p previous-pages.zip artifact.tar | tar --extract --no-same-owner ./.leaderboard-cache.json || true
+          fi
       - name: Build daily snapshot
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.refresh_data != false }}
         run: npm run build
