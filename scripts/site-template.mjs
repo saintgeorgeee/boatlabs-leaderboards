@@ -21,7 +21,7 @@ export function renderSite(snapshot, initialView = "wr") {
   </main>
   <script>
     const snapshot=${data};
-    const points=[100,75,50,38,27,22,19,17,16,15,12,10,8,7,6,5,4,3,2,2];
+    const points=[100,75,50,38,27,22,19,17,15,13,11,10,9,8,7,6,5,4,3,2];
     const byId=id=>document.getElementById(id);let view="wr";const initialView="${initialView}";
     const initial=name=>name.split(/[_ -]/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase()||"?";
     function avatar(name,size="small"){const box=document.createElement("span");box.className="avatar "+size;const img=new Image();img.alt="";img.loading="lazy";img.src="https://mc-heads.net/avatar/"+encodeURIComponent(name)+"/48";img.onerror=()=>{img.remove();box.textContent=initial(name)};box.append(img);return box}
