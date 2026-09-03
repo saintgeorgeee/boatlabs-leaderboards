@@ -2,4 +2,4 @@
 
 An unofficial, updating every day at 03:00 GMT BoatLabs world-record leaderboard.
 
-Disclaimer: this was designed and implemented by AI, I SaintGeorgee do NOT know JavaScript 
+Disclaimer: this was implemented by AI, my skill to make something like this alone is not enough
