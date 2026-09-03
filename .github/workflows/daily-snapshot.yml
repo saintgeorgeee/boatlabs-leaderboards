@@ -3,8 +3,8 @@ name: Update BoatLabs WR leaderboard
 on:
   workflow_dispatch:
   schedule:
-    # Once per day, deliberately off the top of the hour.
-    - cron: "17 4 * * *"
+    # Once per day at 02:00 GMT (UTC).
+    - cron: "0 2 * * *"
 
 permissions:
   contents: read
