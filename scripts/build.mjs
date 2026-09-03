@@ -5,7 +5,7 @@ import { renderHomePage } from "./home-template.mjs";
 const API = "https://api.boatlabs.net/v1/timingsystems";
 const CONCURRENCY = 3;
 const TIMEOUT_MS = 15_000;
-const PERFORMANCE_POINTS = [100, 75, 50, 38, 27, 22, 19, 17, 16, 15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 2];
+const PERFORMANCE_POINTS = [100, 75, 50, 38, 27, 22, 19, 17, 15, 13, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
 
 async function requestJson(url) {
   const controller = new AbortController();
