@@ -37,20 +37,31 @@ async function worker() {
     try {
       const detail = await requestJson(`${API}/getTrack/${encodeURIComponent(track.command_name)}`);
       const first = detail?.top_list?.[0];
-      if (!first?.player || first.time == null) continue;
+      if (!first?.name || first.time == null) continue;
       winners.push({
         trackId: track.id ?? detail.id ?? track.command_name,
         track: track.name || detail.name || track.command_name,
         commandName: track.command_name,
         difficulty: track.difficulty || detail.difficulty || "Unknown",
-        player: first.player,
-        time: String(first.time),
+        player: first.name,
+        time: formatTime(first.time),
         verified: Boolean(first.verified),
       });
     } catch (error) {
       failures.push({ track: track.command_name, error: error.message });
     }
   }
+}
+
+function formatTime(milliseconds) {
+  const total = Number(milliseconds);
+  if (!Number.isFinite(total)) return String(milliseconds);
+  const minutes = Math.floor(total / 60_000);
+  const seconds = Math.floor((total % 60_000) / 1_000);
+  const millis = Math.floor(total % 1_000);
+  return minutes
+    ? `${minutes}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`
+    : `${seconds}.${String(millis).padStart(3, "0")}`;
 }
 
 await Promise.all(Array.from({ length: CONCURRENCY }, worker));
@@ -83,7 +94,6 @@ const html = `<!doctype html>
       <div><div class="eyebrow">COMMUNITY TOOL · UNOFFICIAL</div><h1>BOATLABS WR LEADERBOARD</h1></div>
       <div class="meta"><strong id="updated">Loading snapshot…</strong><span id="coverage"></span></div>
     </header>
-    <section class="intro"><h2>World records, kept simple.</h2><p>A daily snapshot of the current BoatLabs record holders. Tracks without a completed time are not included.</p></section>
     <div class="tools"><input id="search" class="search" type="search" autocomplete="off" placeholder="Search player or track"><label class="toggle"><input id="shared" type="checkbox" checked> Shared rank</label></div>
     <section class="layout"><div class="panel"><div class="list-head"><span>RANK</span><span>PLAYER</span><span>WR</span><span>VERIFIED</span></div><div id="rows"></div></div><aside id="detail" class="panel detail"><div class="detail-empty">Select a player to see the tracks they hold.</div></aside></section>
     <footer class="foot">Data source: <a href="https://boatlabs.net/tracks" target="_blank" rel="noreferrer">BoatLabs tracks</a> · This is an unofficial community project.</footer>
