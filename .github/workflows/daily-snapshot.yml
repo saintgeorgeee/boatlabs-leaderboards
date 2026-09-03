@@ -37,10 +37,10 @@ jobs:
         with:
           enablement: true
       - name: Build daily snapshot
-        if: ${{ inputs.refresh_data != false }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.refresh_data != false }}
         run: npm run build
       - name: Restore last published snapshot
-        if: ${{ inputs.refresh_data == false }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_data == false }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
