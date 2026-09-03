@@ -73,11 +73,6 @@ const targets = fullScan ? tracks : tracks.filter((track) => {
 
 const winners = fullScan ? [] : (previous?.snapshot?.winners || []).filter((record) => activeTracks.has(record.commandName));
 const performances = fullScan ? [] : rescore(previous?.snapshot?.performances || []).filter((record) => activeTracks.has(record.commandName));
-const targetNames = new Set(targets.map((track) => track.command_name));
-if (!fullScan) {
-  for (let index = winners.length - 1; index >= 0; index--) if (targetNames.has(winners[index].commandName)) winners.splice(index, 1);
-  for (let index = performances.length - 1; index >= 0; index--) if (targetNames.has(performances[index].commandName)) performances.splice(index, 1);
-}
 
 const failures = [];
 let cursor = 0;
@@ -88,6 +83,10 @@ async function worker() {
     try {
       const detail = await requestJson(`${API}/getTrack/${encodeURIComponent(track.command_name)}`);
       const topList = Array.isArray(detail?.top_list) ? detail.top_list.slice(0, 20) : [];
+      if (!fullScan) {
+        for (let index = winners.length - 1; index >= 0; index--) if (winners[index].commandName === track.command_name) winners.splice(index, 1);
+        for (let index = performances.length - 1; index >= 0; index--) if (performances[index].commandName === track.command_name) performances.splice(index, 1);
+      }
       const trackData = { trackId: track.id ?? detail.id ?? track.command_name, track: track.name || detail.name || track.command_name, commandName: track.command_name, difficulty: track.difficulty || detail.difficulty || "Unknown" };
       const first = topList[0];
       if (first?.name && first.time != null) winners.push({ ...trackData, player: first.name, time: formatTime(first.time), verified: Boolean(first.verified) });
