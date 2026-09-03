@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { renderHomePage, renderSite } from "./site-template.mjs";
+import { renderSite } from "./site-template.mjs";
+import { renderHomePage } from "./home-template.mjs";
 
 const API = "https://api.boatlabs.net/v1/timingsystems";
 const CONCURRENCY = 3;
