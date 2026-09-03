@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { renderSite } from "./site-template.mjs";
+import { renderHomePage, renderSite } from "./site-template.mjs";
 
 const API = "https://api.boatlabs.net/v1/timingsystems";
 const CONCURRENCY = 3;
@@ -97,7 +97,10 @@ const snapshot = {
   performances,
 };
 
-await mkdir("site", { recursive: true });
-await writeFile("site/index.html", renderSite(snapshot));
+await mkdir("site/wr", { recursive: true });
+await mkdir("site/performance", { recursive: true });
+await writeFile("site/index.html", renderHomePage(snapshot));
+await writeFile("site/wr/index.html", renderSite(snapshot, "wr"));
+await writeFile("site/performance/index.html", renderSite(snapshot, "performance"));
 await writeFile("site/.nojekyll", "");
 console.log(`Built ${winners.length} WRs and ${performances.length} placements from ${tracks.length} tracks; ${failures.length} failed.`);
