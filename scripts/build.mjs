@@ -1,10 +1,12 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { renderSite } from "./site-template.mjs";
 import { renderHomePage } from "./home-template.mjs";
 
 const API = "https://api.boatlabs.net/v1/timingsystems";
 const CONCURRENCY = 3;
 const TIMEOUT_MS = 15_000;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1_000;
+const CACHE_FILE = ".leaderboard-cache.json";
 const PERFORMANCE_POINTS = [100, 75, 50, 38, 27, 22, 19, 17, 15, 13, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
 
 async function requestJson(url) {
@@ -13,10 +15,7 @@ async function requestJson(url) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "BoatLabs-WR-Archive/1.0 (daily GitHub Pages snapshot)",
-      },
+      headers: { Accept: "application/json", "User-Agent": "BoatLabs-WR-Archive/1.0 (daily GitHub Pages snapshot)" },
     });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     return response.json();
@@ -25,51 +24,8 @@ async function requestJson(url) {
   }
 }
 
-const catalog = await requestJson(`${API}/getTracks`);
-const tracks = (Array.isArray(catalog) ? catalog : catalog.tracks || [])
-  .filter((track) => track && track.open !== false && track.command_name);
-
-let cursor = 0;
-const winners = [];
-const performances = [];
-const failures = [];
-
-async function worker() {
-  while (true) {
-    const track = tracks[cursor++];
-    if (!track) return;
-    try {
-      const detail = await requestJson(`${API}/getTrack/${encodeURIComponent(track.command_name)}`);
-      const topList = Array.isArray(detail?.top_list) ? detail.top_list.slice(0, 20) : [];
-      const first = topList[0];
-      if (!first?.name || first.time == null) continue;
-      const trackData = {
-        trackId: track.id ?? detail.id ?? track.command_name,
-        track: track.name || detail.name || track.command_name,
-        commandName: track.command_name,
-        difficulty: track.difficulty || detail.difficulty || "Unknown",
-      };
-      winners.push({
-        ...trackData,
-        player: first.name,
-        time: formatTime(first.time),
-        verified: Boolean(first.verified),
-      });
-      topList.forEach((entry, index) => {
-        if (!entry?.name || entry.time == null) return;
-        performances.push({
-          ...trackData,
-          player: entry.name,
-          position: index + 1,
-          points: PERFORMANCE_POINTS[index],
-          time: formatTime(entry.time),
-          verified: Boolean(entry.verified),
-        });
-      });
-    } catch (error) {
-      failures.push({ track: track.command_name, error: error.message });
-    }
-  }
+async function loadCache() {
+  try { return JSON.parse(await readFile(CACHE_FILE, "utf8")); } catch { return null; }
 }
 
 function formatTime(milliseconds) {
@@ -78,30 +34,78 @@ function formatTime(milliseconds) {
   const minutes = Math.floor(total / 60_000);
   const seconds = Math.floor((total % 60_000) / 1_000);
   const millis = Math.floor(total % 1_000);
-  return minutes
-    ? `${minutes}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`
-    : `${seconds}.${String(millis).padStart(3, "0")}`;
+  return minutes ? `${minutes}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}` : `${seconds}.${String(millis).padStart(3, "0")}`;
+}
+
+function finishCount(track) {
+  const value = Number(track.total_finishes ?? track.totalFinishes);
+  return Number.isFinite(value) ? value : null;
+}
+
+function rescore(placements) {
+  return placements.map((placement) => ({ ...placement, points: PERFORMANCE_POINTS[placement.position - 1] }));
+}
+
+async function writeSite(snapshot, cache) {
+  await mkdir("site/wr", { recursive: true });
+  await mkdir("site/performance", { recursive: true });
+  await writeFile("site/index.html", renderHomePage(snapshot));
+  await writeFile("site/wr/index.html", renderSite(snapshot, "wr"));
+  await writeFile("site/performance/index.html", renderSite(snapshot, "performance"));
+  await writeFile(`site/${CACHE_FILE}`, JSON.stringify(cache));
+  await writeFile("site/.nojekyll", "");
+}
+
+const catalog = await requestJson(`${API}/getTracks`);
+const tracks = (Array.isArray(catalog) ? catalog : catalog.tracks || []).filter((track) => track && track.open !== false && track.command_name);
+const previous = await loadCache();
+const now = new Date();
+const previousFullScan = Date.parse(previous?.lastFullScan || "");
+const fullScan = !previous || !Number.isFinite(previousFullScan) || now.getTime() - previousFullScan >= WEEK_MS;
+const previousCounts = previous?.trackFinishes || {};
+const currentCounts = Object.fromEntries(tracks.map((track) => [track.command_name, finishCount(track)]));
+const activeTracks = new Set(tracks.map((track) => track.command_name));
+const targets = fullScan ? tracks : tracks.filter((track) => {
+  const before = previousCounts[track.command_name];
+  const after = currentCounts[track.command_name];
+  return before === undefined || after === null || before !== after;
+});
+
+const winners = fullScan ? [] : (previous?.snapshot?.winners || []).filter((record) => activeTracks.has(record.commandName));
+const performances = fullScan ? [] : rescore(previous?.snapshot?.performances || []).filter((record) => activeTracks.has(record.commandName));
+const targetNames = new Set(targets.map((track) => track.command_name));
+if (!fullScan) {
+  for (let index = winners.length - 1; index >= 0; index--) if (targetNames.has(winners[index].commandName)) winners.splice(index, 1);
+  for (let index = performances.length - 1; index >= 0; index--) if (targetNames.has(performances[index].commandName)) performances.splice(index, 1);
+}
+
+const failures = [];
+let cursor = 0;
+async function worker() {
+  while (true) {
+    const track = targets[cursor++];
+    if (!track) return;
+    try {
+      const detail = await requestJson(`${API}/getTrack/${encodeURIComponent(track.command_name)}`);
+      const topList = Array.isArray(detail?.top_list) ? detail.top_list.slice(0, 20) : [];
+      const trackData = { trackId: track.id ?? detail.id ?? track.command_name, track: track.name || detail.name || track.command_name, commandName: track.command_name, difficulty: track.difficulty || detail.difficulty || "Unknown" };
+      const first = topList[0];
+      if (first?.name && first.time != null) winners.push({ ...trackData, player: first.name, time: formatTime(first.time), verified: Boolean(first.verified) });
+      topList.forEach((entry, index) => {
+        if (!entry?.name || entry.time == null) return;
+        performances.push({ ...trackData, player: entry.name, position: index + 1, points: PERFORMANCE_POINTS[index], time: formatTime(entry.time), verified: Boolean(entry.verified) });
+      });
+    } catch (error) {
+      failures.push({ track: track.command_name, error: error.message });
+    }
+  }
 }
 
 await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 winners.sort((a, b) => a.player.localeCompare(b.player) || a.track.localeCompare(b.track));
 performances.sort((a, b) => a.player.localeCompare(b.player) || a.track.localeCompare(b.track) || a.position - b.position);
 
-const fetchedAt = new Date().toISOString();
-const snapshot = {
-  fetchedAt,
-  tracksScanned: tracks.length,
-  records: winners.length,
-  placements: performances.length,
-  failed: failures.length,
-  winners,
-  performances,
-};
-
-await mkdir("site/wr", { recursive: true });
-await mkdir("site/performance", { recursive: true });
-await writeFile("site/index.html", renderHomePage(snapshot));
-await writeFile("site/wr/index.html", renderSite(snapshot, "wr"));
-await writeFile("site/performance/index.html", renderSite(snapshot, "performance"));
-await writeFile("site/.nojekyll", "");
-console.log(`Built ${winners.length} WRs and ${performances.length} placements from ${tracks.length} tracks; ${failures.length} failed.`);
+const snapshot = { fetchedAt: now.toISOString(), tracksScanned: tracks.length, records: winners.length, placements: performances.length, failed: failures.length, winners, performances };
+const cache = { version: 1, lastFullScan: fullScan ? snapshot.fetchedAt : previous.lastFullScan, trackFinishes: currentCounts, snapshot };
+await writeSite(snapshot, cache);
+console.log(`${fullScan ? "Full" : "Incremental"} scan: ${targets.length} track details requested; ${winners.length} WRs and ${performances.length} placements from ${tracks.length} tracks; ${failures.length} failed.`);
