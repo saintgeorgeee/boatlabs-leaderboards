@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { renderSite } from "./site-template.mjs";
 import { renderHomePage } from "./home-template.mjs";
+import { renderGrindPage } from "./grind-template.mjs";
 import { PERFORMANCE_POINTS, applyPerformanceWeights, toTrackStats } from "./performance-weighting.mjs";
 
 const API = "https://api.boatlabs.net/v1/timingsystems";
@@ -34,10 +35,11 @@ function finishCount(track) { const value = Number(track.total_finishes ?? track
 function rescore(placements) { return placements.map((placement) => ({ ...placement, basePoints: PERFORMANCE_POINTS[placement.position - 1], points: PERFORMANCE_POINTS[placement.position - 1] })); }
 
 async function writeSite(snapshot, cache) {
-  await mkdir("site/wr", { recursive: true }); await mkdir("site/performance", { recursive: true });
+  await mkdir("site/wr", { recursive: true }); await mkdir("site/performance", { recursive: true }); await mkdir("site/grind", { recursive: true });
   await writeFile("site/index.html", renderHomePage(snapshot));
   await writeFile("site/wr/index.html", renderSite(snapshot, "wr"));
   await writeFile("site/performance/index.html", renderSite(snapshot, "performance"));
+  await writeFile("site/grind/index.html", renderGrindPage(snapshot));
   await writeFile(`site/${CACHE_FILE}`, JSON.stringify(cache)); await writeFile("site/.nojekyll", "");
 }
 
