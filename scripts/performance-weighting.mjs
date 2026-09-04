@@ -43,8 +43,12 @@ function percentiles(items, valueKey) {
  */
 export function applyPerformanceWeights(snapshot, trackStats = {}, now = Date.now()) {
   const trackCommands = new Set();
+  const trackNames = new Map();
   for (const placement of snapshot.performances || []) {
-    if (placement.position === 1) trackCommands.add(placement.commandName);
+    if (placement.position === 1) {
+      trackCommands.add(placement.commandName);
+      trackNames.set(placement.commandName, placement.track || placement.commandName);
+    }
   }
 
   const eligible = [];
@@ -70,6 +74,7 @@ export function applyPerformanceWeights(snapshot, trackStats = {}, now = Date.no
     weights.set(track.commandName, {
       multiplier: 1 + (grind - 1) * fadeIn,
       grindMultiplier: grind,
+      percentile: grindPercentiles.get(track.commandName),
       ageDays: track.ageDays,
     });
   }
@@ -87,10 +92,22 @@ export function applyPerformanceWeights(snapshot, trackStats = {}, now = Date.no
       ageDays: weight && Number(weight.ageDays.toFixed(1)),
     };
   });
+  const grindTracks = [...weights.entries()]
+    .map(([commandName, weight]) => ({
+      commandName,
+      track: trackNames.get(commandName) || commandName,
+      totalTimeSpent: Number(trackStats[commandName]?.totalTimeSpent) || 0,
+      ageDays: Number(weight.ageDays.toFixed(1)),
+      multiplier: Number(weight.multiplier.toFixed(4)),
+      baseGrindMultiplier: Number(weight.grindMultiplier.toFixed(4)),
+      percentile: Number(weight.percentile.toFixed(4)),
+    }))
+    .sort((a, b) => b.totalTimeSpent - a.totalTimeSpent || a.track.localeCompare(b.track));
 
   return {
     ...snapshot,
     performances,
+    grindTracks,
     weighting: {
       eligibleTracks: eligible.length,
       newTracks: Math.max(0, trackCommands.size - eligible.length),
