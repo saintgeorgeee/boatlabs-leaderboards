@@ -44,10 +44,12 @@ function percentiles(items, valueKey) {
 export function applyPerformanceWeights(snapshot, trackStats = {}, now = Date.now()) {
   const trackCommands = new Set();
   const trackNames = new Map();
+  const wrHolders = new Map();
   for (const placement of snapshot.performances || []) {
     if (placement.position === 1) {
       trackCommands.add(placement.commandName);
       trackNames.set(placement.commandName, placement.track || placement.commandName);
+      wrHolders.set(placement.commandName, placement.player || "Unknown");
     }
   }
 
@@ -96,6 +98,7 @@ export function applyPerformanceWeights(snapshot, trackStats = {}, now = Date.no
     .map(([commandName, weight]) => ({
       commandName,
       track: trackNames.get(commandName) || commandName,
+      wrHolder: wrHolders.get(commandName) || "Unknown",
       totalTimeSpent: Number(trackStats[commandName]?.totalTimeSpent) || 0,
       ageDays: Number(weight.ageDays.toFixed(1)),
       multiplier: Number(weight.multiplier.toFixed(4)),
