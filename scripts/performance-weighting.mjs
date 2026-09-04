@@ -23,14 +23,6 @@ function grindMultiplier(percentile) {
   return TOP_MULTIPLIER;
 }
 
-function parseTime(time) {
-  const parts = String(time || "").split(":");
-  const seconds = Number(parts.pop());
-  if (!Number.isFinite(seconds)) return null;
-  const minutes = parts.reduce((total, part) => total * 60 + Number(part), 0);
-  return Math.round((minutes * 60 + seconds) * 1_000);
-}
-
 function percentiles(items, valueKey) {
   const sorted = [...items].sort((a, b) => a[valueKey] - b[valueKey] || a.commandName.localeCompare(b.commandName));
   const result = new Map();
@@ -50,15 +42,13 @@ function percentiles(items, valueKey) {
  * so one exceptional track cannot distort every other score.
  */
 export function applyPerformanceWeights(snapshot, trackStats = {}, now = Date.now()) {
-  const wrTimes = new Map();
+  const trackCommands = new Set();
   for (const placement of snapshot.performances || []) {
-    if (placement.position !== 1) continue;
-    const time = parseTime(placement.time);
-    if (time && (!wrTimes.has(placement.commandName) || time < wrTimes.get(placement.commandName))) wrTimes.set(placement.commandName, time);
+    if (placement.position === 1) trackCommands.add(placement.commandName);
   }
 
   const eligible = [];
-  for (const [commandName, wrTime] of wrTimes) {
+  for (const commandName of trackCommands) {
     const stats = trackStats[commandName] || {};
     const createdAt = Number(stats.createdAt);
     const totalTimeSpent = Number(stats.totalTimeSpent);
@@ -67,24 +57,19 @@ export function applyPerformanceWeights(snapshot, trackStats = {}, now = Date.no
     eligible.push({
       commandName,
       ageDays,
-      wrTime,
-      // Equivalent WR-length runs per day: this makes a track's age and length fair.
-      grindIntensity: totalTimeSpent / (ageDays * wrTime),
+      // The public total time spent is the only factor used to rank grind.
+      grindIntensity: totalTimeSpent,
     });
   }
 
   const grindPercentiles = percentiles(eligible, "grindIntensity");
-  const lengthPercentiles = percentiles(eligible, "wrTime");
   const weights = new Map();
   for (const track of eligible) {
     const grind = grindMultiplier(grindPercentiles.get(track.commandName));
-    const length = 0.9 + 0.2 * lengthPercentiles.get(track.commandName);
-    const fullMultiplier = grind * length;
     const fadeIn = track.ageDays >= 60 ? 1 : smoothstep((track.ageDays - 30) / 30);
     weights.set(track.commandName, {
-      multiplier: 1 + (fullMultiplier - 1) * fadeIn,
+      multiplier: 1 + (grind - 1) * fadeIn,
       grindMultiplier: grind,
-      lengthMultiplier: length,
       ageDays: track.ageDays,
     });
   }
@@ -99,7 +84,6 @@ export function applyPerformanceWeights(snapshot, trackStats = {}, now = Date.no
       points: Math.max(1, Math.round(basePoints * multiplier)),
       trackMultiplier: Number(multiplier.toFixed(4)),
       grindMultiplier: weight && Number(weight.grindMultiplier.toFixed(4)),
-      lengthMultiplier: weight && Number(weight.lengthMultiplier.toFixed(4)),
       ageDays: weight && Number(weight.ageDays.toFixed(1)),
     };
   });
@@ -109,7 +93,7 @@ export function applyPerformanceWeights(snapshot, trackStats = {}, now = Date.no
     performances,
     weighting: {
       eligibleTracks: eligible.length,
-      newTracks: Math.max(0, wrTimes.size - eligible.length),
+      newTracks: Math.max(0, trackCommands.size - eligible.length),
       topGrindMultiplier: TOP_MULTIPLIER,
       lowGrindMultiplier: Number((1 / TOP_MULTIPLIER).toFixed(4)),
     },
