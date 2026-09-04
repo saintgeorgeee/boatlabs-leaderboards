@@ -1,4 +1,4 @@
-name: Update BoatLabs WR leaderboard
+name: Update BoatLabs leaderboards
 
 on:
   workflow_dispatch:
@@ -9,7 +9,6 @@ on:
         default: true
         type: boolean
   schedule:
-    # Once per day at 02:00 GMT (UTC).
     - cron: "0 2 * * *"
 
 permissions:
@@ -50,7 +49,7 @@ jobs:
       - name: Build daily snapshot
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.refresh_data != false }}
         run: npm run build
-      - name: Restore last published snapshot
+      - name: Rebuild published snapshot with track metadata
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_data == false }}
         env:
           GH_TOKEN: ${{ github.token }}
