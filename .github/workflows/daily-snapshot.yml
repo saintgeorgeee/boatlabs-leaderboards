@@ -1,6 +1,8 @@
 name: Update BoatLabs leaderboards
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       refresh_data:
@@ -23,6 +25,8 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    # One controlled cache-only deployment; ordinary pushes do not run this job.
+    if: ${{ github.event_name != 'push' || github.event.head_commit.message == 'Publish TT points leaderboard' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -50,7 +54,7 @@ jobs:
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
         run: npm run build
       - name: Rebuild published snapshot with track metadata
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_data == false }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data == false) }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
