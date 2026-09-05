@@ -1,8 +1,6 @@
 name: Update BoatLabs leaderboards
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       refresh_data:
@@ -25,7 +23,6 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    if: ${{ github.event_name != 'push' || github.event.head_commit.message == 'Run immediate daily sync' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -39,7 +36,7 @@ jobs:
         with:
           enablement: true
       - name: Restore incremental sync cache
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -50,7 +47,7 @@ jobs:
             unzip -p previous-pages.zip artifact.tar | tar --extract --no-same-owner ./.leaderboard-cache.json || true
           fi
       - name: Build daily snapshot
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
         run: npm run build
       - name: Rebuild published snapshot with track metadata
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_data == false }}
