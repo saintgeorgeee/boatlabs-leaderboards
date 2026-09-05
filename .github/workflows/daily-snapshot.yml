@@ -61,7 +61,7 @@ jobs:
           artifact_url="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" --jq '.artifacts[] | select(.name == "github-pages" and .expired == false) | .archive_download_url' | head -n 1)"
           curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" "${artifact_url}" -o pages.zip
           unzip -p pages.zip artifact.tar | tar --extract --no-same-owner
-          node scripts/rebuild-from-cache.mjs performance/index.html
+          node scripts/rebuild-from-cache.mjs tt/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./site
