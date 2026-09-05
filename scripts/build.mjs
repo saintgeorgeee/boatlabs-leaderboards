@@ -1,8 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { renderSite } from "./site-template.mjs";
 import { renderHomePage } from "./home-template.mjs";
-import { renderGrindPage } from "./grind-template.mjs";
-import { PERFORMANCE_POINTS, applyPerformanceWeights, toTrackStats } from "./performance-weighting.mjs";
+import { PERFORMANCE_POINTS } from "./performance-weighting.mjs";
 
 const API = "https://api.boatlabs.net/v1/timingsystems";
 const CONCURRENCY = 3;
@@ -35,11 +34,10 @@ function finishCount(track) { const value = Number(track.total_finishes ?? track
 function rescore(placements) { return placements.map((placement) => ({ ...placement, basePoints: PERFORMANCE_POINTS[placement.position - 1], points: PERFORMANCE_POINTS[placement.position - 1] })); }
 
 async function writeSite(snapshot, cache) {
-  await mkdir("site/wr", { recursive: true }); await mkdir("site/performance", { recursive: true }); await mkdir("site/grind", { recursive: true });
+  await mkdir("site/wr", { recursive: true }); await mkdir("site/tt", { recursive: true });
   await writeFile("site/index.html", renderHomePage(snapshot));
   await writeFile("site/wr/index.html", renderSite(snapshot, "wr"));
-  await writeFile("site/performance/index.html", renderSite(snapshot, "performance"));
-  await writeFile("site/grind/index.html", renderGrindPage(snapshot));
+  await writeFile("site/tt/index.html", renderSite(snapshot, "performance"));
   await writeFile(`site/${CACHE_FILE}`, JSON.stringify(cache)); await writeFile("site/.nojekyll", "");
 }
 
@@ -51,7 +49,6 @@ const previousFullScan = Date.parse(previous?.lastFullScan || "");
 const fullScan = !previous || !Number.isFinite(previousFullScan) || now.getTime() - previousFullScan >= WEEK_MS;
 const previousCounts = previous?.trackFinishes || {};
 const currentCounts = Object.fromEntries(tracks.map((track) => [track.command_name, finishCount(track)]));
-const currentTrackStats = toTrackStats(tracks);
 const activeTracks = new Set(tracks.map((track) => track.command_name));
 const targets = fullScan ? tracks : tracks.filter((track) => previousCounts[track.command_name] === undefined || currentCounts[track.command_name] === null || previousCounts[track.command_name] !== currentCounts[track.command_name]);
 
@@ -83,7 +80,7 @@ await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 winners.sort((a, b) => a.player.localeCompare(b.player) || a.track.localeCompare(b.track));
 performances.sort((a, b) => a.player.localeCompare(b.player) || a.track.localeCompare(b.track) || a.position - b.position);
 const rawSnapshot = { fetchedAt: now.toISOString(), tracksScanned: tracks.length, records: winners.length, placements: performances.length, failed: failures.length, winners, performances };
-const snapshot = applyPerformanceWeights(rawSnapshot, currentTrackStats, now.getTime());
-const cache = { version: 2, lastFullScan: fullScan ? snapshot.fetchedAt : previous.lastFullScan, trackFinishes: currentCounts, trackStats: currentTrackStats, snapshot };
+const snapshot = rawSnapshot;
+const cache = { version: 4, lastFullScan: fullScan ? snapshot.fetchedAt : previous.lastFullScan, trackFinishes: currentCounts, snapshot };
 await writeSite(snapshot, cache);
 console.log(`${fullScan ? "Full" : "Incremental"} scan: ${targets.length} track details requested; ${winners.length} WRs and ${performances.length} placements from ${tracks.length} tracks; ${failures.length} failed.`);
