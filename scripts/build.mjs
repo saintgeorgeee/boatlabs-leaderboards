@@ -53,13 +53,7 @@ const fullScan = !previous || !Number.isFinite(previousFullScan) || now.getTime(
 const previousCounts = previous?.trackFinishes || {};
 const currentCounts = Object.fromEntries(tracks.map((track) => [track.command_name, finishCount(track)]));
 const activeTracks = new Set(tracks.map((track) => track.command_name));
-// Some catalog entries do not expose total_finishes. Keep their cached result until the weekly
-// full scan instead of treating an unknown counter as a change on every daily sync.
-const targets = fullScan ? tracks : tracks.filter((track) => {
-  const current = currentCounts[track.command_name];
-  const previousCount = previousCounts[track.command_name];
-  return previousCount === undefined || (current !== null && previousCount !== current);
-});
+const targets = fullScan ? tracks : tracks.filter((track) => previousCounts[track.command_name] === undefined || currentCounts[track.command_name] === null || previousCounts[track.command_name] !== currentCounts[track.command_name]);
 
 const winners = fullScan ? [] : (previous?.snapshot?.winners || []).filter((record) => activeTracks.has(record.commandName));
 const performances = fullScan ? [] : rescore(previous?.snapshot?.performances || []).filter((record) => activeTracks.has(record.commandName));
