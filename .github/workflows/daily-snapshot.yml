@@ -1,8 +1,6 @@
 name: Update BoatLabs leaderboards
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       refresh_data:
@@ -25,7 +23,6 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    if: ${{ github.event_name != 'push' || github.event.head_commit.message == 'Run complete BoatLabs rescan' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -39,7 +36,7 @@ jobs:
         with:
           enablement: true
       - name: Restore incremental sync cache
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -49,12 +46,8 @@ jobs:
             curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" "${artifact_url}" -o previous-pages.zip
             unzip -p previous-pages.zip artifact.tar | tar --extract --no-same-owner ./.leaderboard-cache.json || true
           fi
-      - name: Force complete rescan for this run
-        if: ${{ github.event_name == 'push' }}
-        run: |
-          node -e "const fs=require('fs');const p='.leaderboard-cache.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));c.lastFullScan='1970-01-01T00:00:00.000Z';fs.writeFileSync(p,JSON.stringify(c))"
       - name: Build daily snapshot
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
         run: npm run build
       - name: Rebuild published snapshot with track metadata
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_data == false }}
