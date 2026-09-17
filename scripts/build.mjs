@@ -1,8 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { renderSite } from "./site-template.mjs";
 import { renderHomePage } from "./home-template.mjs";
-import { renderChangesPage } from "./changes-template.mjs";
-import { initializeWrHistory, recordDailyWrChanges } from "./wr-history.mjs";
 import { PERFORMANCE_POINTS } from "./performance-weighting.mjs";
 
 const API = "https://api.boatlabs.net/v1/timingsystems";
@@ -36,11 +34,10 @@ function finishCount(track) { const value = Number(track.total_finishes ?? track
 function rescore(placements) { return placements.map((placement) => ({ ...placement, basePoints: PERFORMANCE_POINTS[placement.position - 1], points: PERFORMANCE_POINTS[placement.position - 1] })); }
 
 async function writeSite(snapshot, cache) {
-  await mkdir("site/wr", { recursive: true }); await mkdir("site/tt", { recursive: true }); await mkdir("site/changes", { recursive: true });
+  await mkdir("site/wr", { recursive: true }); await mkdir("site/tt", { recursive: true });
   await writeFile("site/index.html", renderHomePage(snapshot));
   await writeFile("site/wr/index.html", renderSite(snapshot, "wr"));
   await writeFile("site/tt/index.html", renderSite(snapshot, "performance"));
-  await writeFile("site/changes/index.html", renderChangesPage(snapshot));
   await writeFile(`site/${CACHE_FILE}`, JSON.stringify(cache)); await writeFile("site/.nojekyll", "");
 }
 
@@ -53,7 +50,13 @@ const fullScan = !previous || !Number.isFinite(previousFullScan) || now.getTime(
 const previousCounts = previous?.trackFinishes || {};
 const currentCounts = Object.fromEntries(tracks.map((track) => [track.command_name, finishCount(track)]));
 const activeTracks = new Set(tracks.map((track) => track.command_name));
-const targets = fullScan ? tracks : tracks.filter((track) => previousCounts[track.command_name] === undefined || currentCounts[track.command_name] === null || previousCounts[track.command_name] !== currentCounts[track.command_name]);
+// Some catalog entries do not expose total_finishes. Keep their cached result until the weekly
+// full scan instead of treating an unknown counter as a change on every daily sync.
+const targets = fullScan ? tracks : tracks.filter((track) => {
+  const current = currentCounts[track.command_name];
+  const previousCount = previousCounts[track.command_name];
+  return previousCount === undefined || (current !== null && previousCount !== current);
+});
 
 const winners = fullScan ? [] : (previous?.snapshot?.winners || []).filter((record) => activeTracks.has(record.commandName));
 const performances = fullScan ? [] : rescore(previous?.snapshot?.performances || []).filter((record) => activeTracks.has(record.commandName));
@@ -82,10 +85,7 @@ async function worker() {
 await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 winners.sort((a, b) => a.player.localeCompare(b.player) || a.track.localeCompare(b.track));
 performances.sort((a, b) => a.player.localeCompare(b.player) || a.track.localeCompare(b.track) || a.position - b.position);
-const rawSnapshot = { fetchedAt: now.toISOString(), tracksScanned: tracks.length, records: winners.length, placements: performances.length, failed: failures.length, winners, performances };
-let wrHistory = initializeWrHistory(previous?.wrHistory, rawSnapshot, now);
-if (previous?.wrHistory) wrHistory = recordDailyWrChanges(wrHistory, previous?.snapshot?.winners, winners, now);
-const snapshot = { ...rawSnapshot, wrHistory };
-const cache = { version: 5, lastFullScan: fullScan ? snapshot.fetchedAt : previous.lastFullScan, trackFinishes: currentCounts, wrHistory, snapshot };
+const snapshot = { fetchedAt: now.toISOString(), tracksScanned: tracks.length, records: winners.length, placements: performances.length, failed: failures.length, winners, performances };
+const cache = { version: 6, lastFullScan: fullScan ? snapshot.fetchedAt : previous.lastFullScan, trackFinishes: currentCounts, snapshot };
 await writeSite(snapshot, cache);
 console.log(`${fullScan ? "Full" : "Incremental"} scan: ${targets.length} track details requested; ${winners.length} WRs and ${performances.length} placements from ${tracks.length} tracks; ${failures.length} failed.`);
