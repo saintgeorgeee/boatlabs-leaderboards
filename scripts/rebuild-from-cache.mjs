@@ -15,8 +15,10 @@ const rawSnapshot = JSON.parse(html.slice(start, end));
 
 let previous = {};
 try { previous = JSON.parse(await readFile(CACHE_FILE, "utf8")); } catch { throw new Error("The published metadata cache is unavailable; refusing to contact BoatLabs for a presentation-only rebuild."); }
-const snapshot = { ...rawSnapshot, performances: rawSnapshot.performances.map(({ trackMultiplier, grindMultiplier, lengthMultiplier, ageDays, ...placement }) => ({ ...placement, basePoints: PERFORMANCE_POINTS[placement.position - 1], points: PERFORMANCE_POINTS[placement.position - 1] })) };
-const cache = { ...previous, version: 6, snapshot };
+const { wrHistory, ...baseSnapshot } = rawSnapshot;
+const snapshot = { ...baseSnapshot, performances: rawSnapshot.performances.map(({ trackMultiplier, grindMultiplier, lengthMultiplier, ageDays, ...placement }) => ({ ...placement, basePoints: PERFORMANCE_POINTS[placement.position - 1], points: PERFORMANCE_POINTS[placement.position - 1] })) };
+const { wrHistory: previousHistory, ...baseCache } = previous;
+const cache = { ...baseCache, version: 6, snapshot };
 
 await mkdir("site/wr", { recursive: true }); await mkdir("site/tt", { recursive: true });
 await writeFile("site/index.html", renderHomePage(snapshot));
