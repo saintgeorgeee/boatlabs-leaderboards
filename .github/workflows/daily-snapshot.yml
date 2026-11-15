@@ -1,8 +1,6 @@
 name: Update BoatLabs leaderboards
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       refresh_data:
@@ -26,7 +24,6 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    if: ${{ github.event_name != 'push' || github.event.head_commit.message == 'Publish most played track leaderboards' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -43,7 +40,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NAMES_ONLY: ${{ github.event.schedule == '17 */3 * * *' }}
-          CACHE_ONLY: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.refresh_data == false }}
+          CACHE_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_data == false }}
         run: |
           run_ids="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/daily-snapshot.yml/runs?status=success&per_page=30" --jq '.workflow_runs[].id')"
           artifact_url=""
@@ -68,7 +65,7 @@ jobs:
         if: ${{ github.event.schedule == '30 22 * * *' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
         run: npm run build
       - name: Rebuild from cache
-        if: ${{ github.event_name == 'push' || github.event.schedule == '17 */3 * * *' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data == false) }}
+        if: ${{ github.event.schedule == '17 */3 * * *' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data == false) }}
         env:
           REFRESH_BUILDER_NAMES: ${{ (github.event.schedule == '17 */3 * * *') && '1' || '0' }}
         run: node scripts/rebuild-from-cache.mjs tt/index.html
