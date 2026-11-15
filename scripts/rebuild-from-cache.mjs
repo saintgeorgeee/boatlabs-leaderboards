@@ -24,6 +24,10 @@ if (process.env.REFRESH_BUILDERS === "1") {
   const response = await fetch("https://api.boatlabs.net/v1/timingsystems/getTracks", {signal:AbortSignal.timeout(20_000)});
   if (!response.ok) throw new Error("BoatLabs track catalog: HTTP "+response.status);
   cache.builders = await collectBuilders(await response.json(), cache.builders);
+} else if (process.env.REFRESH_BUILDER_NAMES === "1" && cache.builders?.tracks?.length) {
+  const {tracks,fetchedAt} = cache.builders;
+  const catalog = tracks.map(t=>({command_name:t.command,display_name:t.track,owner:t.owner,total_time_spent:t.ms,difficulty:t.difficulty}));
+  cache.builders = {...await collectBuilders(catalog, cache.builders),fetchedAt};
 }
 
 await mkdir("site/wr", { recursive: true }); await mkdir("site/tt", { recursive: true });
