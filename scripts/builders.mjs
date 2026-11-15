@@ -92,11 +92,7 @@ export function rankBuilders(data, mode) {
   });
 }
 
-// Sample the same 8x8 face pixels at every render size. These signatures
-// were measured from the providers' default/missing-profile renders.
-const genericFaces = [1084160353,3079292036,587504647,2865648652,1175903024];
 const tryNextAvatar = "const pending=JSON.parse(this.dataset.sources);const next=pending.shift();if(next){this.dataset.sources=JSON.stringify(pending);this.src=next}else{this.parentElement.textContent=this.dataset.initials}";
-const checkAvatarFace = "let generic=false;try{const c=document.createElement('canvas');c.width=c.height=8;const ctx=c.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.drawImage(this,0,0,8,8);let h=2166136261;for(const byte of ctx.getImageData(0,0,8,8).data)h=Math.imul(h^byte,16777619);generic="+JSON.stringify(genericFaces)+".includes(h>>>0)}catch{}if(generic){"+tryNextAvatar+"}";
 
 function builderAvatar(player, size, timestamp, preview = false) {
   const name = /^[A-Za-z0-9_]{1,16}$/.test(player.name) ? player.name : null;
@@ -110,7 +106,7 @@ function builderAvatar(player, size, timestamp, preview = false) {
     `https://skinrender.dev/render/${id}/face?size=${size}&hat=true&default=none`,
   ];
   const previewStyle = preview ? ' style="width:25px;height:25px;display:grid;place-items:center;background:#263140;border-radius:5px;font-size:10px;font-weight:800"' : "";
-  return `<span class="avatar"${previewStyle}><img crossorigin="anonymous" data-sources="${escape(JSON.stringify(sources.slice(1)))}" data-initials="${escape(initials)}" loading="lazy" alt="" onload="${escape(checkAvatarFace)}" onerror="${escape(tryNextAvatar)}" src="${sources[0]}"></span>`;
+  return `<span class="avatar"${previewStyle}><img data-sources="${escape(JSON.stringify(sources.slice(1)))}" data-initials="${escape(initials)}" loading="lazy" alt="" onerror="${escape(tryNextAvatar)}" src="${sources[0]}"></span>`;
 }
 
 function trackRankingLink(prefix) {
