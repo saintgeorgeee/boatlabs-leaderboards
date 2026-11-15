@@ -24,10 +24,20 @@ if (process.env.REFRESH_BUILDERS === "1") {
   const response = await fetch("https://api.boatlabs.net/v1/timingsystems/getTracks", {signal:AbortSignal.timeout(20_000)});
   if (!response.ok) throw new Error("BoatLabs track catalog: HTTP "+response.status);
   cache.builders = await collectBuilders(await response.json(), cache.builders);
-} else if (process.env.REFRESH_BUILDER_NAMES === "1" && cache.builders?.tracks?.length) {
+} else if (process.env.REFRESH_BUILDER_NAMES === "1") {
+  if (!cache.builders?.tracks?.length) {
+    console.log("No cached builder catalog yet; waiting for the daily scan.");
+    process.exit(0);
+  }
   const {tracks,fetchedAt} = cache.builders;
   const catalog = tracks.map(t=>({command_name:t.command,display_name:t.track,owner:t.owner,total_time_spent:t.ms,difficulty:t.difficulty}));
-  cache.builders = {...await collectBuilders(catalog, cache.builders),fetchedAt};
+  const next = await collectBuilders(catalog, cache.builders, fetch, Date.now(), {missingOnly:true});
+  if (JSON.stringify(next.profiles) === JSON.stringify(cache.builders.profiles) &&
+      next.lookupAfter === (cache.builders.lookupAfter ?? 0)) {
+    console.log("No eligible missing builder names; keeping current deployment.");
+    process.exit(0);
+  }
+  cache.builders = {...next,fetchedAt};
 }
 
 await mkdir("site/wr", { recursive: true }); await mkdir("site/tt", { recursive: true });

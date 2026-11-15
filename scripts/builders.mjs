@@ -11,7 +11,7 @@ export const builderModes = [
   {slug:"builders-average", label:"Average per track", column:"AVG HOURS", score:p=>p.total/p.tracks.length},
 ];
 
-export async function collectBuilders(catalog, previous = {}, fetcher = fetch, now = Date.now()) {
+export async function collectBuilders(catalog, previous = {}, fetcher = fetch, now = Date.now(), {missingOnly = false} = {}) {
   const raw = Array.isArray(catalog) ? catalog : catalog?.tracks;
   if (!Array.isArray(raw) || !raw.length) throw new Error("Empty BoatLabs track catalog");
   const seen = new Set();
@@ -28,7 +28,7 @@ export async function collectBuilders(catalog, previous = {}, fetcher = fetch, n
   const owners = [...new Set(tracks.map(t=>t.owner))];
   const profiles = Object.fromEntries(owners.map(id=>[id,previous.profiles?.[id] ?? null]));
   let lookupAfter = previous.lookupAfter ?? 0;
-  const pending = lookupAfter > now ? [] : owners.filter(id=>!(profiles[id]?.retryAt > now))
+  const pending = lookupAfter > now ? [] : owners.filter(id=>!(profiles[id]?.retryAt > now) && (!missingOnly || !profiles[id]?.name))
     .sort((a,b)=>Number(Boolean(profiles[a]?.name))-Number(Boolean(profiles[b]?.name)) ||
       (profiles[a]?.retryAt ?? 0)-(profiles[b]?.retryAt ?? 0)).slice(0, 40);
   let cursor = 0;
@@ -39,17 +39,22 @@ export async function collectBuilders(catalog, previous = {}, fetcher = fetch, n
       const id = pending[cursor++];
       let name = profiles[id]?.name ?? null;
       let delay = DAY;
+      let status = "temporary_error";
       try {
         const response = await fetcher("https://api.minecraftservices.com/minecraft/profile/lookup/"+id, {signal:AbortSignal.timeout(5000)});
         countOutcome(response.status);
-        if (response.ok) {
+        if (response.status === 404 || response.status === 204) {
+          status = "not_found";
+          delay = 7*DAY;
+        } else if (response.ok) {
           const profile = await response.json();
           if (profile.id?.replace(/-/g,"").toLowerCase() === id && /^[A-Za-z0-9_]{1,16}$/.test(profile.name)) {
             name = profile.name;
+            status = "resolved";
             delay = 30*DAY;
           }
-        } else if (response.status === 404 || response.status === 204) delay = 7*DAY;
-        else if (response.status === 429) {
+        } else if (response.status === 429) {
+          status = "rate_limited";
           cursor = pending.length;
           const retry = response.headers.get("Retry-After");
           const next = retry && /^\d+$/.test(retry) ? now+Number(retry)*1000 : Date.parse(retry||"");
@@ -58,7 +63,7 @@ export async function collectBuilders(catalog, previous = {}, fetcher = fetch, n
           console.warn("Minecraft profile lookup rate limited; deferring remaining lookups.");
         }
       } catch { countOutcome("error"); /* Keep the last verified name if the service is unavailable. */ }
-      profiles[id] = {name,retryAt:now+delay};
+      profiles[id] = {name,retryAt:now+delay,status};
     }
   }));
   console.log(`Builders: ${tracks.length} tracks, ${owners.length} owners, ${owners.filter(id=>!profiles[id]?.name).length} unresolved names. Profile lookup responses: ${JSON.stringify(outcomes)}`);

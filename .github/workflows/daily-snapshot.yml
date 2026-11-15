@@ -1,6 +1,8 @@
 name: Update BoatLabs leaderboards
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       refresh_data:
@@ -10,6 +12,7 @@ on:
         type: boolean
   schedule:
     - cron: "30 22 * * *"
+    - cron: "17 */3 * * *" # Retry unresolved builder names only.
 
 permissions:
   contents: read
@@ -23,6 +26,7 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    if: ${{ github.event_name != 'push' || github.event.head_commit.message == 'Automate missing builder name recovery' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -35,32 +39,48 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Restore incremental sync cache
-        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
+      - name: Restore last published snapshot
         env:
           GH_TOKEN: ${{ github.token }}
+          NAMES_ONLY: ${{ github.event_name == 'push' || github.event.schedule == '17 */3 * * *' }}
+          CACHE_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_data == false }}
         run: |
-          run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/daily-snapshot.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].id')"
-          artifact_url="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" --jq '.artifacts[] | select(.name == "github-pages" and .expired == false) | .archive_download_url' | head -n 1)"
-          if [ -n "${artifact_url}" ]; then
-            curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" "${artifact_url}" -o previous-pages.zip
-            unzip -p previous-pages.zip artifact.tar | tar --extract --no-same-owner ./.leaderboard-cache.json || true
+          run_ids="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/daily-snapshot.yml/runs?status=success&per_page=30" --jq '.workflow_runs[].id')"
+          artifact_url=""
+          for run_id in ${run_ids}; do
+            artifact_url="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?name=github-pages" --jq '.artifacts[] | select(.expired == false) | .archive_download_url' | head -n 1)"
+            if [ -n "${artifact_url}" ]; then break; fi
+          done
+          if [ -z "${artifact_url}" ]; then
+            if [ "$NAMES_ONLY" = true ] || [ "$CACHE_ONLY" = true ]; then
+              echo "No recent published snapshot available"
+              exit 1
+            fi
+            exit 0
+          fi
+          curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" "${artifact_url}" -o previous-pages.zip
+          if [ "$NAMES_ONLY" = true ] || [ "$CACHE_ONLY" = true ]; then
+            unzip -p previous-pages.zip artifact.tar | tar --extract --no-same-owner ./.leaderboard-cache.json ./tt/index.html
+          else
+            unzip -p previous-pages.zip artifact.tar | tar --extract --no-same-owner ./.leaderboard-cache.json
           fi
       - name: Build daily snapshot
-        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
+        if: ${{ github.event.schedule == '30 22 * * *' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data != false) }}
         run: npm run build
-      - name: Rebuild published snapshot with track metadata
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_data == false }}
+      - name: Rebuild from cache
+        if: ${{ github.event_name == 'push' || github.event.schedule == '17 */3 * * *' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data == false) }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          REFRESH_BUILDER_NAMES: ${{ (github.event_name == 'push' || github.event.schedule == '17 */3 * * *') && '1' || '0' }}
+        run: node scripts/rebuild-from-cache.mjs tt/index.html
+      - name: Check whether there is a new snapshot
+        id: snapshot
         run: |
-          run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/daily-snapshot.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].id')"
-          artifact_url="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" --jq '.artifacts[] | select(.name == "github-pages" and .expired == false) | .archive_download_url' | head -n 1)"
-          curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" "${artifact_url}" -o pages.zip
-          unzip -p pages.zip artifact.tar | tar --extract --no-same-owner
-          node scripts/rebuild-from-cache.mjs tt/index.html
+          if test -f site/index.html; then echo "publish=true" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/upload-pages-artifact@v3
+        if: steps.snapshot.outputs.publish == 'true'
         with:
           path: ./site
+          retention-days: 3
       - id: deployment
+        if: steps.snapshot.outputs.publish == 'true'
         uses: actions/deploy-pages@v4
