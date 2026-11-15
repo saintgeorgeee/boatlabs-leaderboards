@@ -89,10 +89,20 @@ export function rankBuilders(data, mode) {
   });
 }
 
+function builderAvatar(player, size, timestamp, preview = false) {
+  const name = /^[A-Za-z0-9_]{1,16}$/.test(player.name) ? player.name : player.id;
+  const identifier = encodeURIComponent(name);
+  const initials = name === player.id ? "?" : (name.split("_").filter(Boolean).slice(0,2).map(part=>part[0]).join("").toUpperCase() || "?");
+  const primary = `https://minotar.net/helm/${identifier}/${size}?cache=${encodeURIComponent(timestamp)}`;
+  const fallback = `https://mc-heads.net/avatar/${identifier}/${size}`;
+  const previewStyle = preview ? ' style="width:25px;height:25px;display:grid;place-items:center;background:#263140;border-radius:5px;font-size:10px;font-weight:800"' : "";
+  return `<span class="avatar"${previewStyle}><img src="${primary}" data-fallback="${fallback}" data-initials="${escape(initials)}" loading="lazy" alt="" onerror="if(this.dataset.fallback){const next=this.dataset.fallback;delete this.dataset.fallback;this.src=next}else{this.parentElement.textContent=this.dataset.initials}"></span>`;
+}
+
 export function renderBuilderChoices(data) {
   if (!data?.tracks?.length) return "";
   return '<h2 class="group-title">Builders</h2><section class="choices">'+builderModes.map(mode=>{
-    const rows = rankBuilders(data,mode).slice(0,3).map(p=>`<div class="preview-row"><span class="rank">${p.rank}</span><img src="https://minotar.net/helm/${p.id}/32" alt=""><span class="name">${escape(p.name)}</span><strong>${hours(p.score)} h</strong></div>`).join("");
+    const rows = rankBuilders(data,mode).slice(0,3).map(p=>`<div class="preview-row"><span class="rank">${p.rank}</span>${builderAvatar(p,32,data.fetchedAt,true)}<span class="name">${escape(p.name)}</span><strong>${hours(p.score)} h</strong></div>`).join("");
     return `<a class="choice performance" href="./${mode.slug}/"><span class="tag">BUILDERS</span><h1>${mode.label}</h1><div class="preview">${rows}</div><span class="arrow">View full leaderboard →</span></a>`;
   }).join("")+'</section>';
 }
@@ -101,11 +111,11 @@ export function renderBuilderPage(data, mode) {
   const average = mode === builderModes[1];
   const builders = rankBuilders(data, mode);
   const scoreText = average ? hours : wholeHours;
-  const avatar = id => `<span class="avatar"><img src="https://minotar.net/helm/${id}/48" loading="lazy" alt=""></span>`;
+  const avatar = player => builderAvatar(player,48,data.fetchedAt);
   const podium = ["podium-gold","podium-silver","podium-bronze"];
   const rows = builders.map((p,i)=>`<button type="button" class="row ${podium[i]||""}" data-builder="${p.id}" aria-controls="detail" aria-expanded="false">
-    <span class="rank">#${p.rank}</span><span class="who">${avatar(p.id)}<span class="name">${escape(p.name)}</span></span><span class="score">${scoreText(p.score)}</span><span class="secondary">${p.tracks.length}</span></button>`).join("");
-  const details = builders.map(p=>`<template id="builder-${p.id}"><div class="detail-head">${avatar(p.id)}<div class="detail-title"><h3>${escape(p.name)}</h3><p>${p.tracks.length} ${p.tracks.length===1?"track":"tracks"} · ${hours(p.total)} h total${average?" · "+hours(p.score)+" h average":""}</p></div>
+    <span class="rank">#${p.rank}</span><span class="who">${avatar(p)}<span class="name">${escape(p.name)}</span></span><span class="score">${scoreText(p.score)}</span><span class="secondary">${p.tracks.length}</span></button>`).join("");
+  const details = builders.map(p=>`<template id="builder-${p.id}"><div class="detail-head">${avatar(p)}<div class="detail-title"><h3>${escape(p.name)}</h3><p>${p.tracks.length} ${p.tracks.length===1?"track":"tracks"} · ${hours(p.total)} h total${average?" · "+hours(p.score)+" h average":""}</p></div>
     <button class="close" type="button" aria-label="Close builder details">×</button></div>
     <div class="cards">${[...p.tracks].sort((a,b)=>b.ms-a.ms||a.track.localeCompare(b.track)).map(t=>
       `<article class="card"><a class="track-link" href="https://boatlabs.net/tracks/${encodeURIComponent(t.command)}" target="_blank" rel="noopener noreferrer" title="${escape(t.track)}">${escape(t.track)}</a><div class="card-bottom">${t.difficulty?`<span class="badge ${difficultyClass(t.difficulty)}">${escape(t.difficulty)}</span>`:""}<span class="time">${hours(t.ms)} h</span></div></article>`).join("")}</div></template>`).join("");
