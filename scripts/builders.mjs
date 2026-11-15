@@ -6,9 +6,10 @@ const escape = value => String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<"
 const hours = ms => new Intl.NumberFormat("en", {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(ms / 3_600_000);
 const wholeHours = ms => new Intl.NumberFormat("en", {maximumFractionDigits:0}).format(ms / 3_600_000);
 const difficultyClass = value => String(value ?? "").toLowerCase().replace(/[^a-z]/g, "");
+const MIN_AVERAGE_TRACKS = 3;
 export const builderModes = [
   {slug:"builders-total", label:"Total played time", column:"TOTAL HOURS", score:p=>p.total},
-  {slug:"builders-average", label:"Average per track", column:"AVG HOURS", score:p=>p.total/p.tracks.length},
+  {slug:"builders-average", label:"Average per track", column:"AVG HOURS", minTracks:MIN_AVERAGE_TRACKS, score:p=>p.total/p.tracks.length},
 ];
 
 export async function collectBuilders(catalog, previous = {}, fetcher = fetch, now = Date.now(), {missingOnly = false} = {}) {
@@ -80,7 +81,7 @@ export function rankBuilders(data, mode) {
     byOwner.set(id,row);
   }
   let previousScore, rank;
-  return [...byOwner.values()].sort((a,b)=>mode.score(b)-mode.score(a)||a.name.localeCompare(b.name)||a.id.localeCompare(b.id)).map((p,i)=>{
+  return [...byOwner.values()].filter(p=>p.tracks.length >= (mode.minTracks ?? 1)).sort((a,b)=>mode.score(b)-mode.score(a)||a.name.localeCompare(b.name)||a.id.localeCompare(b.id)).map((p,i)=>{
     const score = mode.score(p);
     if (score !== previousScore) rank = i+1;
     previousScore = score;
@@ -103,21 +104,23 @@ export function renderBuilderPage(data, mode) {
   const avatar = id => `<span class="avatar"><img src="https://minotar.net/helm/${id}/48" loading="lazy" alt=""></span>`;
   const podium = ["podium-gold","podium-silver","podium-bronze"];
   const rows = builders.map((p,i)=>`<button type="button" class="row ${podium[i]||""}" data-builder="${p.id}" aria-controls="detail" aria-expanded="false">
-    <span class="rank">#${p.rank}</span><span class="who">${avatar(p.id)}<span class="name">${escape(p.name)}</span></span><span class="score">${scoreText(p.score)}</span>${average?`<span class="secondary">${p.tracks.length}</span>`:""}</button>`).join("");
+    <span class="rank">#${p.rank}</span><span class="who">${avatar(p.id)}<span class="name">${escape(p.name)}</span></span><span class="score">${scoreText(p.score)}</span><span class="secondary">${p.tracks.length}</span></button>`).join("");
   const details = builders.map(p=>`<template id="builder-${p.id}"><div class="detail-head">${avatar(p.id)}<div class="detail-title"><h3>${escape(p.name)}</h3><p>${p.tracks.length} ${p.tracks.length===1?"track":"tracks"} · ${hours(p.total)} h total${average?" · "+hours(p.score)+" h average":""}</p></div>
     <button class="close" type="button" aria-label="Close builder details">×</button></div>
     <div class="cards">${[...p.tracks].sort((a,b)=>b.ms-a.ms||a.track.localeCompare(b.track)).map(t=>
       `<article class="card"><a class="track-link" href="https://boatlabs.net/tracks/${encodeURIComponent(t.command)}" target="_blank" rel="noopener noreferrer" title="${escape(t.track)}">${escape(t.track)}</a><div class="card-bottom">${t.difficulty?`<span class="badge ${difficultyClass(t.difficulty)}">${escape(t.difficulty)}</span>`:""}<span class="time">${hours(t.ms)} h</span></div></article>`).join("")}</div></template>`).join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BoatLabs Builders · ${mode.label}</title>
 <style>${leaderboardStyles}
-.list-head,.row{grid-template-columns:52px minmax(0,1fr) minmax(84px,auto)${average?" 70px":""}}
+.list-head,.row{grid-template-columns:52px minmax(0,1fr) minmax(84px,auto) 70px}
+.points-panel .tt-points-details strong{color:var(--muted);font-size:12px}@media(max-width:620px){.points-panel .tt-points-details strong{font-size:11px}}
 .list-head>*:nth-child(n+3),.score,.secondary{text-align:right}.score,.time{white-space:nowrap;font-variant-numeric:tabular-nums}.row[aria-expanded=true]{box-shadow:inset 3px 0 var(--gold)}[hidden]{display:none!important}
 @media(max-width:820px){.layout.has-detail{grid-template-rows:minmax(0,1.15fr) minmax(180px,.85fr)}.layout:not(.has-detail){grid-template-rows:minmax(0,1fr) 0}.layout:not(.has-detail) #detail{display:none}}
-@media(max-width:620px){.list-head,.row{grid-template-columns:36px minmax(0,1fr) minmax(70px,auto)${average?" 49px":""}}.site-nav a{padding:5px 6px}.top h1{font-size:12px}}
+@media(max-width:620px){.list-head,.row{grid-template-columns:36px minmax(0,1fr) minmax(70px,auto) 49px}.site-nav a{padding:5px 6px}.top h1{font-size:12px}}
 </style></head><body><main class="shell">
 <header class="top"><a class="mark" href="../" aria-label="Home" style="text-decoration:none;flex:none">BL</a><div><div class="eyebrow">COMMUNITY TOOL · UNOFFICIAL</div><h1>BOATLABS BUILDERS</h1></div><nav class="site-nav" aria-label="Builder leaderboards">${builderModes.map(x=>`<a href="../${x.slug}/"${x===mode?' class="active" aria-current="page"':""}>${x===builderModes[0]?"Total time":"Average time"}</a>`).join("")}</nav><div class="meta"><strong>Snapshot · ${escape(data.fetchedAt.slice(0,10))}</strong><span>${data.tracks.length} tracks</span></div></header>
 <div class="tools"><input id="search" class="search" type="search" placeholder="Search builder or track" aria-label="Search builder or track" autocomplete="off"></div>
-<section id="layout" class="layout"><div class="panel"><div class="list-head"><span>RANK</span><span>PLAYER</span><span>${mode.column}</span>${average?"<span>TRACKS BUILT</span>":""}</div><div id="rows">${rows}<p id="empty" class="empty" hidden>No matching builders or tracks.</p></div></div><aside id="detail" class="panel" aria-label="Builder tracks"><div class="detail-empty">Select a builder to see their tracks.</div></aside></section>
+${average?`<section class="points-panel"><div class="tt-points-details"><strong>Only players with AT LEAST ${MIN_AVERAGE_TRACKS} tracks appear here</strong></div></section>`:""}
+<section id="layout" class="layout"><div class="panel"><div class="list-head"><span>RANK</span><span>PLAYER</span><span>${mode.column}</span><span>TRACKS</span></div><div id="rows">${rows}<p id="empty" class="empty" hidden>No matching builders or tracks.</p></div></div><aside id="detail" class="panel" aria-label="Builder tracks"><div class="detail-empty">Select a builder to see their tracks.</div></aside></section>
 <footer class="foot">Credits use the official BoatLabs track owner. ${average?"Average = total hours divided by tracks built.":"Ranked by total played time; displayed to the nearest hour."}</footer>
 </main>${details}<script>
 const rows=document.getElementById("rows"),panel=document.getElementById("detail"),layout=document.getElementById("layout");
