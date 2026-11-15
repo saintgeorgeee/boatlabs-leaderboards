@@ -67,3 +67,5 @@ jobs:
           path: ./site
       - id: deployment
         uses: actions/deploy-pages@v4
+
+# Retry cached publication.
