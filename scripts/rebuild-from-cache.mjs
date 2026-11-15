@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { renderSite } from "./site-template.mjs";
 import { renderHomePage } from "./home-template.mjs";
 import { PERFORMANCE_POINTS } from "./performance-weighting.mjs";
+import { collectBuilders, writeBuilderPages } from "./builders.mjs";
 
 const CACHE_FILE = ".leaderboard-cache.json";
 const sourcePath = process.argv[2];
@@ -19,10 +20,16 @@ const { wrHistory, ...baseSnapshot } = rawSnapshot;
 const snapshot = { ...baseSnapshot, performances: rawSnapshot.performances.map(({ trackMultiplier, grindMultiplier, lengthMultiplier, ageDays, ...placement }) => ({ ...placement, basePoints: PERFORMANCE_POINTS[placement.position - 1], points: PERFORMANCE_POINTS[placement.position - 1] })) };
 const { wrHistory: previousHistory, ...baseCache } = previous;
 const cache = { ...baseCache, version: 6, snapshot };
+if (process.env.REFRESH_BUILDERS === "1") {
+  const response = await fetch("https://api.boatlabs.net/v1/timingsystems/getTracks", {signal:AbortSignal.timeout(20_000)});
+  if (!response.ok) throw new Error("BoatLabs track catalog: HTTP "+response.status);
+  cache.builders = await collectBuilders(await response.json(), cache.builders);
+}
 
 await mkdir("site/wr", { recursive: true }); await mkdir("site/tt", { recursive: true });
-await writeFile("site/index.html", renderHomePage(snapshot));
+await writeFile("site/index.html", renderHomePage(snapshot, cache.builders));
+await writeBuilderPages(cache.builders);
 await writeFile("site/wr/index.html", renderSite(snapshot, "wr"));
 await writeFile("site/tt/index.html", renderSite(snapshot, "performance"));
 await writeFile(`site/${CACHE_FILE}`, JSON.stringify(cache)); await writeFile("site/.nojekyll", "");
-console.log(`Rebuilt ${snapshot.records} WRs and ${snapshot.placements} placements entirely from the published cache; BoatLabs was not contacted.`);
+console.log(`Rebuilt ${snapshot.records} WRs and ${snapshot.placements} placements from cache; no driver leaderboard requests made.`);

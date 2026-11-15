@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { renderSite } from "./site-template.mjs";
 import { renderHomePage } from "./home-template.mjs";
 import { PERFORMANCE_POINTS } from "./performance-weighting.mjs";
+import { collectBuilders, writeBuilderPages } from "./builders.mjs";
 
 const API = "https://api.boatlabs.net/v1/timingsystems";
 const CONCURRENCY = 3;
@@ -35,7 +36,8 @@ function rescore(placements) { return placements.map((placement) => ({ ...placem
 
 async function writeSite(snapshot, cache) {
   await mkdir("site/wr", { recursive: true }); await mkdir("site/tt", { recursive: true });
-  await writeFile("site/index.html", renderHomePage(snapshot));
+  await writeFile("site/index.html", renderHomePage(snapshot, cache.builders));
+  await writeBuilderPages(cache.builders);
   await writeFile("site/wr/index.html", renderSite(snapshot, "wr"));
   await writeFile("site/tt/index.html", renderSite(snapshot, "performance"));
   await writeFile(`site/${CACHE_FILE}`, JSON.stringify(cache)); await writeFile("site/.nojekyll", "");
@@ -86,6 +88,9 @@ await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 winners.sort((a, b) => a.player.localeCompare(b.player) || a.track.localeCompare(b.track));
 performances.sort((a, b) => a.player.localeCompare(b.player) || a.track.localeCompare(b.track) || a.position - b.position);
 const snapshot = { fetchedAt: now.toISOString(), tracksScanned: tracks.length, records: winners.length, placements: performances.length, failed: failures.length, winners, performances };
-const cache = { version: 6, lastFullScan: fullScan ? snapshot.fetchedAt : previous.lastFullScan, trackFinishes: currentCounts, snapshot };
+let builders = previous?.builders;
+try { builders = await collectBuilders(catalog, builders); }
+catch (error) { console.warn("Keeping previous builder snapshot:", error.message); }
+const cache = { version: 6, lastFullScan: fullScan ? snapshot.fetchedAt : previous.lastFullScan, trackFinishes: currentCounts, snapshot, builders };
 await writeSite(snapshot, cache);
 console.log(`${fullScan ? "Full" : "Incremental"} scan: ${targets.length} track details requested; ${winners.length} WRs and ${performances.length} placements from ${tracks.length} tracks; ${failures.length} failed.`);
