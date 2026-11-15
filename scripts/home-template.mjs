@@ -1,8 +1,8 @@
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 
-function previewRow(player, index, label) {
+function previewRow(player, index, label, snapshotTimestamp) {
   const name = escapeHtml(player.name);
-  return `<div class="preview-row"><span class="rank">${index + 1}</span><img src="https://minotar.net/avatar/${encodeURIComponent(player.name)}/32" onerror="this.onerror=null;this.src='https://mc-heads.net/avatar/${encodeURIComponent(player.name)}/32'" alt=""><span class="name">${name}</span><strong>${player.value} ${label}</strong></div>`;
+  return `<div class="preview-row"><span class="rank">${index + 1}</span><img src="https://minotar.net/avatar/${encodeURIComponent(player.name)}/32?cache=${encodeURIComponent(snapshotTimestamp)}" onerror="this.onerror=null;this.src='https://mc-heads.net/avatar/${encodeURIComponent(player.name)}/32'" alt=""><span class="name">${name}</span><strong>${player.value} ${label}</strong></div>`;
 }
 
 export function renderHomePage(snapshot) {
@@ -35,8 +35,8 @@ export function renderHomePage(snapshot) {
   <main class="shell">
     <div class="brand"><span class="mark">BL</span> BOATLABS LEADERBOARDS</div>
     <section class="choices">
-      <a class="choice" href="./wr/"><span class="tag">WR LEADERBOARD</span><h1>Current leaders</h1><div class="preview">${wr.map((player, index) => previewRow(player, index, "WR")).join("")}</div><span class="arrow">View full leaderboard →</span></a>
-      <a class="choice performance" href="./tt/"><span class="tag">TT POINTS LEADERBOARD</span><h1>Current leaders</h1><div class="preview">${performance.map((player, index) => previewRow(player, index, "pts")).join("")}</div><span class="arrow">View full leaderboard →</span></a>
+      <a class="choice" href="./wr/"><span class="tag">WR LEADERBOARD</span><h1>Current leaders</h1><div class="preview">${wr.map((player, index) => previewRow(player, index, "WR", snapshot.fetchedAt)).join("")}</div><span class="arrow">View full leaderboard →</span></a>
+      <a class="choice performance" href="./tt/"><span class="tag">TT POINTS LEADERBOARD</span><h1>Current leaders</h1><div class="preview">${performance.map((player, index) => previewRow(player, index, "pts", snapshot.fetchedAt)).join("")}</div><span class="arrow">View full leaderboard →</span></a>
     </section>
     <div class="meta">Snapshot · ${updated} · ${snapshot.tracksScanned} tracks</div>
   </main>
