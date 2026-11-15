@@ -2,7 +2,7 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => (
 
 function previewRow(player, index, label) {
   const name = escapeHtml(player.name);
-  return `<div class="preview-row"><span class="rank">${index + 1}</span><img src="https://mc-heads.net/avatar/${encodeURIComponent(player.name)}/32" alt=""><span class="name">${name}</span><strong>${player.value} ${label}</strong></div>`;
+  return `<div class="preview-row"><span class="rank">${index + 1}</span><img src="https://minotar.net/avatar/${encodeURIComponent(player.name)}/32" onerror="this.onerror=null;this.src='https://mc-heads.net/avatar/${encodeURIComponent(player.name)}/32'" alt=""><span class="name">${name}</span><strong>${player.value} ${label}</strong></div>`;
 }
 
 export function renderHomePage(snapshot) {
